@@ -1,12 +1,9 @@
 # ============================
 # CE 5326 Project 1 – Frequency Analysis
-# Q1–Q9: Full Analysis (1929–2016 and 1929–2022)
+# Local file version (peak.txt)
 # ============================
 
-# ---- 0) Packages ----
-install.packages(c("dataRetrieval","dplyr","lubridate","ggplot2",
-                   "fitdistrplus","extRemes","gridExtra"))
-library(dataRetrieval)
+# ---- 0) Libraries ----
 library(dplyr)
 library(lubridate)
 library(ggplot2)
@@ -14,22 +11,33 @@ library(fitdistrplus)
 library(extRemes)
 library(gridExtra)
 
-# ---- 1) Download and prepare data ----
-site <- "08069000"   # Cypress Creek nr Westfield, TX
-peaks_raw <- readNWISpeak(site)
+# ---- 1) Read and prepare data ----
+# Read USGS peak streamflow file (skip headers)
+peaks_raw <- read.table("D:/Elma/peak.txt", 
+                        header=TRUE, sep="\t", 
+                        stringsAsFactors=FALSE, skip=2)
 
+# Fix dates with "-00" placeholders → replace with "01"
+peaks_raw$peak_dt <- gsub("-00", "-01", peaks_raw$peak_dt)
+
+# Convert to Date
+peaks_raw$date <- as.Date(peaks_raw$peak_dt, format="%Y-%m-%d")
+
+# Peak discharge (cfs)
+peaks_raw$Q_cfs <- as.numeric(peaks_raw$peak_va)
+
+# Keep only valid rows
 peaks <- peaks_raw %>%
-  transmute(date = as.Date(peak_dt),
-            Q_cfs = as.numeric(peak_va)) %>%
   filter(!is.na(date), !is.na(Q_cfs)) %>%
   mutate(HY = ifelse(month(date) >= 10, year(date)+1, year(date)))
 
+# Annual Maximum Series
 annual_max <- peaks %>%
   group_by(HY) %>%
   summarise(Qmax = max(Q_cfs, na.rm=TRUE), .groups="drop") %>%
   arrange(HY)
 
-# ---- Skewness helper ----
+# ---- Helper: Skewness ----
 skewness <- function(x){
   n <- length(x); m <- mean(x); s <- sd(x)
   g1 <- (n/((n-1)*(n-2))) * sum(((x - m)/s)^3)
@@ -42,18 +50,18 @@ skewness <- function(x){
 am_29_16 <- annual_max %>% filter(HY >= 1929, HY <= 2016)
 x1 <- am_29_16$Qmax; n1 <- length(x1)
 
-# Histogram
+# Histogram (Doane’s formula)
 g1 <- skewness(x1)
 se_g1 <- sqrt(6*(n1-2)/((n1+1)*(n1+3)))
 k_doane1 <- 1 + log2(n1) + log2(1 + abs(g1)/se_g1)
 
 p_hist <- ggplot(am_29_16, aes(x=Qmax)) +
-  geom_histogram(bins=round(k_doane1), fill="skyblue", color="black", alpha=1) +
+  geom_histogram(bins=round(k_doane1), fill="skyblue", color="black") +
   labs(title="Histogram for 1929–2016 (Doane bins)",
        x="Peak Discharge (cfs)", y="Count") +
   theme_bw()
 
-# ECDF
+# ECDF (Gringorten)
 x1_sorted <- sort(x1)
 F_gring <- (1:n1 - 0.44)/(n1 + 0.12)
 
@@ -64,7 +72,6 @@ p_ecdf <- ggplot(data.frame(x1_sorted, F_gring),
        x="Flow (cfs)", y="Non-exceedance Probability") +
   theme_bw()
 
-# Show side by side
 grid.arrange(p_hist, p_ecdf, ncol=2)
 
 # Distribution fitting
@@ -99,18 +106,18 @@ cat("Return period (years, 1929–2016) ≈", T2017, "\n")
 am_29_22 <- annual_max %>% filter(HY >= 1929, HY <= 2022)
 x2 <- am_29_22$Qmax; n2 <- length(x2)
 
-# Histogram
+# Histogram (Doane’s formula)
 g2 <- skewness(x2)
 se_g2 <- sqrt(6*(n2-2)/((n2+1)*(n2+3)))
 k_doane2 <- 1 + log2(n2) + log2(1 + abs(g2)/se_g2)
 
 p_hist2 <- ggplot(am_29_22, aes(x=Qmax)) +
-  geom_histogram(bins=round(k_doane2), fill="gold", color="black", alpha=1) +
+  geom_histogram(bins=round(k_doane2), fill="gold", color="black") +
   labs(title="Histogram for 1929–2022 (Doane bins)",
        x="Peak Discharge (cfs)", y="Count") +
   theme_bw()
 
-# ECDF
+# ECDF (Gringorten)
 x2_sorted <- sort(x2)
 F_gring2 <- (1:n2 - 0.44)/(n2 + 0.12)
 
@@ -121,7 +128,6 @@ p_ecdf2 <- ggplot(data.frame(x2_sorted, F_gring2),
        x="Flow (cfs)", y="Non-exceedance Probability") +
   theme_bw()
 
-# Show side by side
 grid.arrange(p_hist2, p_ecdf2, ncol=2)
 
 # Distribution fitting
